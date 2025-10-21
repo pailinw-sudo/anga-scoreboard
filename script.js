@@ -28,8 +28,9 @@
   // Holds a pending score change before confirmation
   let pendingChange = null;
 
-  // Reference to the Chart.js instance for the live bar chart
-  let scoreChart = null;
+  // Flag to indicate visitor mode (scoreboard only view)
+  let isVisitorMode = false;
+
 
   /**
    * Load persisted state from localStorage or initialise a new structure.
@@ -82,7 +83,54 @@
     }
 
     if (!currentAdmin) {
-      // Not logged in: render login form
+      // If in visitor mode, render the scoreboard-only view
+      if (isVisitorMode) {
+        // Scoreboard view for visitors
+        html += `<div class="card">
+                    <h2>Scoreboard</h2>
+                    <div class="scoreboard">
+                      ${TEAMS.map((team) => {
+                        const score = state.scores[team.name];
+                        return `<div class="score-item" style="background-color: ${team.color};">
+                                    <span>${team.name}</span>
+                                    <span class="score">${score}</span>
+                                </div>`;
+                      }).join('')}
+                    </div>
+                    <p style="margin-top:10px; font-size:0.9em; color:#666;">Last updated: ${state.lastUpdate ? new Date(state.lastUpdate).toLocaleString() : 'Never'}</p>
+                </div>`;
+
+        // Bar chart representation for visitors (reuse CSS bars)
+        const scoresArray = Object.values(state.scores).map((v) => (v > 0 ? v : 0));
+        const maxScore = Math.max(...scoresArray, 1);
+        html += `<div class="card">
+                    <h2>Score Chart</h2>
+                    <div class="bar-container">
+                      ${TEAMS.map((team) => {
+                        const score = state.scores[team.name];
+                        const widthPercent = score > 0 ? (score / maxScore) * 100 : 0;
+                        const widthStr = widthPercent.toFixed(2);
+                        return `<div class="bar" style="background-color: ${team.color}; width: ${widthStr}%">
+                                  <span class="bar-label">${team.name}: ${score}</span>
+                                </div>`;
+                      }).join('')}
+                    </div>
+                  </div>`;
+
+        // Back button to go to login page
+        html += `<div class="card" style="text-align:center;">
+                    <button id="backBtn">Back to Admin Login</button>
+                </div>`;
+        container.innerHTML = html;
+        // Attach back button handler
+        document.getElementById('backBtn').addEventListener('click', function () {
+          isVisitorMode = false;
+          flashMessage = null;
+          renderApp();
+        });
+        return;
+      }
+      // Not logged in and not in visitor mode: render login form with visitor option
       html += `<div class="card">
                 <h2>Admin Login</h2>
                 <p>Please select your name and enter the password.</p>
@@ -93,6 +141,9 @@
                   <input type="password" id="adminPass" placeholder="Password">
                   <button type="submit">Login</button>
                 </form>
+                <hr style="margin:15px 0;">
+                <p style="margin-bottom:5px;">Or continue as visitor:</p>
+                <button id="visitorBtn">View Scoreboard</button>
               </div>`;
       container.innerHTML = html;
       // Attach login handler
@@ -103,12 +154,19 @@
         const admin = ADMINS.find((a) => a.user === user);
         if (admin && admin.pass === pass) {
           currentAdmin = user;
+          isVisitorMode = false;
           flashMessage = { type: 'success', text: `Welcome, ${user}!` };
           renderApp();
         } else {
           flashMessage = { type: 'error', text: 'Invalid credentials.' };
           renderApp();
         }
+      });
+      // Attach visitor button handler
+      document.getElementById('visitorBtn').addEventListener('click', function () {
+        isVisitorMode = true;
+        flashMessage = null;
+        renderApp();
       });
       return;
     }
@@ -128,10 +186,22 @@
               <p style="margin-top:10px; font-size:0.9em; color:#666;">Last updated: ${state.lastUpdate ? new Date(state.lastUpdate).toLocaleString() : 'Never'}</p>
             </div>`;
 
-    // Insert a live bar chart showing scores proportionally for each team
+    // Insert a CSS-based bar chart showing scores proportionally for each team.
+    // Compute the maximum positive score to normalise bar widths.
+    const scoresArray = Object.values(state.scores).map((v) => (v > 0 ? v : 0));
+    const maxScore = Math.max(...scoresArray, 1);
     html += `<div class="card">
               <h2>Score Chart</h2>
-              <canvas id="scoreChartCanvas" style="width:100%;max-width:100%;"></canvas>
+              <div class="bar-container">
+                ${TEAMS.map((team) => {
+                  const score = state.scores[team.name];
+                  const widthPercent = score > 0 ? (score / maxScore) * 100 : 0;
+                  const widthStr = widthPercent.toFixed(2);
+                  return `<div class="bar" style="background-color: ${team.color}; width: ${widthStr}%">
+                            <span class="bar-label">${team.name}: ${score}</span>
+                          </div>`;
+                }).join('')}
+              </div>
             </div>`;
 
     // Add/Remove score controls. Note input is placed above the score buttons for clarity.
@@ -234,6 +304,7 @@
     // Logout
     document.getElementById('logoutBtn').addEventListener('click', function () {
       currentAdmin = null;
+      isVisitorMode = false;
       flashMessage = { type: 'success', text: 'Logged out.' };
       renderApp();
     });
@@ -255,8 +326,7 @@
       });
     }
 
-    // Update live bar chart after rendering
-    updateChart(state);
+    // No chart update needed with CSS-based bars (bars rendered directly in HTML)
   }
 
   /**
@@ -322,65 +392,4 @@
     renderApp();
   });
 
-  /**
-   * Update or create the live bar chart representing team scores. Uses Chart.js.
-   * If an existing chart is present, it will update the data; otherwise it
-   * creates a new bar chart. Each bar corresponds to a team and is coloured
-   * according to the team's colour. The y-axis begins at zero.
-   * @param {Object} state
-   */
-  function updateChart(state) {
-    // Ensure the canvas exists in the DOM
-    const canvas = document.getElementById('scoreChartCanvas');
-    if (!canvas || typeof Chart === 'undefined') {
-      return;
-    }
-    const ctx = canvas.getContext('2d');
-    const labels = TEAMS.map((t) => t.name);
-    const data = labels.map((name) => state.scores[name]);
-    const colours = TEAMS.map((t) => t.color);
-    // Chart.js expects values not all equal; when all values are zero, we still want a chart.
-    if (scoreChart) {
-      scoreChart.data.labels = labels;
-      scoreChart.data.datasets[0].data = data;
-      scoreChart.data.datasets[0].backgroundColor = colours;
-      scoreChart.update();
-    } else {
-      scoreChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-          labels: labels,
-          datasets: [
-            {
-              label: 'Score',
-              data: data,
-              backgroundColor: colours,
-            },
-          ],
-        },
-        options: {
-          responsive: true,
-          plugins: {
-            legend: {
-              display: false,
-            },
-            tooltip: {
-              callbacks: {
-                // Format tooltip to display team name and score with sign if needed
-                label: function (context) {
-                  const value = context.parsed.y;
-                  return `${context.label}: ${value}`;
-                },
-              },
-            },
-          },
-          scales: {
-            y: {
-              beginAtZero: true,
-            },
-          },
-        },
-      });
-    }
-  }
 })();

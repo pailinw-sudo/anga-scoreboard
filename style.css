@@ -120,6 +120,38 @@ tr:nth-child(even) {
     background-color: #f5f5f5;
 }
 
+/* Bar chart styling */
+.bar-container {
+    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.bar {
+    position: relative;
+    height: 26px;
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: opacity 0.2s ease;
+}
+
+.bar:hover {
+    opacity: 0.85;
+}
+
+.bar-label {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #ffffff;
+    font-weight: 600;
+    font-size: 14px;
+    white-space: nowrap;
+}
+
 /* Notification styling */
 .message {
     padding: 10px;
