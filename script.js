@@ -25,7 +25,8 @@
   ];
   let currentAdmin = null;
   let flashMessage = null;
-  // Holds a pending score change before confirmation
+  // Holds a pending score change before confirmation. The object has the shape:
+  // { team: string, delta: number, deltas: number[], note: string }
   let pendingChange = null;
 
   // Flag to indicate visitor mode (scoreboard only view)
@@ -213,7 +214,7 @@
                   ${TEAMS.map((t) => `<option value="${t.name}">${t.name}</option>`).join('')}
                 </select>
                 <div style="margin-top:10px;">
-                  <input type="text" id="noteInput" placeholder="Note (optional)" style="width:70%;">
+                  <input type="text" id="noteInput" placeholder="Note" style="width:70%;">
                 </div>
                 <div style="margin-top:10px;">
                   ${[1,5,10].map((n) => {
@@ -228,10 +229,22 @@
 
     // If there is a pending change, show a confirmation preview
     if (pendingChange) {
-      const sign = pendingChange.delta > 0 ? '+' + pendingChange.delta : pendingChange.delta;
+      // Build a string representing the calculation details, e.g., "10 + 10 + -5"
+      const detailStr = pendingChange.deltas
+        .map((d, idx) => {
+          // For the first number, just show the number itself with sign
+          if (idx === 0) {
+            return d > 0 ? d : d;
+          }
+          // For subsequent numbers, prefix with a plus sign for positive numbers
+          return d > 0 ? `+${d}` : d;
+        })
+        .join(' ');
+      const totalSign = pendingChange.delta > 0 ? '+' + pendingChange.delta : pendingChange.delta;
       html += `<div class="card" id="confirmCard">
                 <h3>Pending Update</h3>
-                <p>You are about to change <strong>${pendingChange.team}</strong> by <strong>${sign}</strong> points.</p>
+                <p>You are about to change <strong>${pendingChange.team}</strong> by <strong>${totalSign}</strong> points.</p>
+                <p>Calculation: ${detailStr}</p>
                 ${pendingChange.note ? `<p>Note: ${pendingChange.note}</p>` : ''}
                 <div style="margin-top:10px;">
                   <button id="confirmBtn">Confirm</button>
@@ -277,12 +290,31 @@
     document.querySelectorAll('.score-btn').forEach((btn) => {
       btn.addEventListener('click', function () {
         const delta = parseInt(this.getAttribute('data-delta'), 10);
-        const team = document.getElementById('teamSelect').value;
+        const teamSelect = document.getElementById('teamSelect');
+        const team = teamSelect.value;
         const note = document.getElementById('noteInput').value.trim();
-        // Set pending change and re-render for confirmation
-        pendingChange = { team, delta, note };
+        // If there is an existing pending change for the same team, accumulate
+        if (pendingChange && pendingChange.team === team) {
+          // accumulate
+          pendingChange.deltas.push(delta);
+          pendingChange.delta += delta;
+          pendingChange.note = note;
+        } else {
+          // start a new pending change
+          pendingChange = { team, delta, deltas: [delta], note };
+        }
         renderApp();
       });
+    });
+
+    // Clear pending change if team selection changes
+    const teamSelectEl = document.getElementById('teamSelect');
+    teamSelectEl.addEventListener('change', function () {
+      if (pendingChange) {
+        // Reset pending change when team selection changes
+        pendingChange = null;
+        renderApp();
+      }
     });
     // Export history to CSV
     document.getElementById('exportBtn').addEventListener('click', function () {
