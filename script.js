@@ -205,7 +205,7 @@
               </div>
             </div>`;
 
-    // Add/Remove score controls. Note input is placed above the score buttons for clarity.
+    // Add/Remove score controls. Note input will be shown in the confirmation preview instead of here.
     html += `<div class="card">
               <h2>Update Score</h2>
               <form id="scoreForm">
@@ -213,9 +213,6 @@
                 <select id="teamSelect">
                   ${TEAMS.map((t) => `<option value="${t.name}">${t.name}</option>`).join('')}
                 </select>
-                <div style="margin-top:10px;">
-                  <input type="text" id="noteInput" placeholder="Note" style="width:70%;">
-                </div>
                 <div style="margin-top:10px;">
                   ${[1,5,10].map((n) => {
                     return `<button type="button" class="score-btn" data-delta="${n}">+${n}</button>`;
@@ -245,7 +242,9 @@
                 <h3>Pending Update</h3>
                 <p>You are about to change <strong>${pendingChange.team}</strong> by <strong>${totalSign}</strong> points.</p>
                 <p>Calculation: ${detailStr}</p>
-                ${pendingChange.note ? `<p>Note: ${pendingChange.note}</p>` : ''}
+                <div style="margin-top:10px;">
+                  <input type="text" id="confirmNoteInput" placeholder="Note" style="width:70%;" value="${pendingChange.note ? pendingChange.note.replace(/"/g, '&quot;') : ''}">
+                </div>
                 <div style="margin-top:10px;">
                   <button id="confirmBtn">Confirm</button>
                   <button id="cancelBtn" style="margin-left:10px; background-color:#ccc; color:#333;">Cancel</button>
@@ -292,16 +291,14 @@
         const delta = parseInt(this.getAttribute('data-delta'), 10);
         const teamSelect = document.getElementById('teamSelect');
         const team = teamSelect.value;
-        const note = document.getElementById('noteInput').value.trim();
-        // If there is an existing pending change for the same team, accumulate
+        // If there is an existing pending change for the same team, accumulate the delta
         if (pendingChange && pendingChange.team === team) {
-          // accumulate
           pendingChange.deltas.push(delta);
           pendingChange.delta += delta;
-          pendingChange.note = note;
+          // Note remains unchanged until updated in the preview
         } else {
-          // start a new pending change
-          pendingChange = { team, delta, deltas: [delta], note };
+          // Start a new pending change for this team; clear previous note
+          pendingChange = { team, delta, deltas: [delta], note: '' };
         }
         renderApp();
       });
@@ -356,6 +353,17 @@
         flashMessage = { type: 'error', text: 'Update cancelled.' };
         renderApp();
       });
+
+      // Attach handler for updating note in the confirmation preview
+      const noteInput = document.getElementById('confirmNoteInput');
+      if (noteInput) {
+        noteInput.addEventListener('input', function () {
+          if (pendingChange) {
+            pendingChange.note = this.value;
+            // No re-render here to preserve cursor position; the note value will persist on next render
+          }
+        });
+      }
     }
 
     // No chart update needed with CSS-based bars (bars rendered directly in HTML)
