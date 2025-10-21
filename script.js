@@ -28,6 +28,9 @@
   // Holds a pending score change before confirmation
   let pendingChange = null;
 
+  // Reference to the Chart.js instance for the live bar chart
+  let scoreChart = null;
+
   /**
    * Load persisted state from localStorage or initialise a new structure.
    * State structure:
@@ -125,7 +128,13 @@
               <p style="margin-top:10px; font-size:0.9em; color:#666;">Last updated: ${state.lastUpdate ? new Date(state.lastUpdate).toLocaleString() : 'Never'}</p>
             </div>`;
 
-    // Add/Remove score controls
+    // Insert a live bar chart showing scores proportionally for each team
+    html += `<div class="card">
+              <h2>Score Chart</h2>
+              <canvas id="scoreChartCanvas" style="width:100%;max-width:100%;"></canvas>
+            </div>`;
+
+    // Add/Remove score controls. Note input is placed above the score buttons for clarity.
     html += `<div class="card">
               <h2>Update Score</h2>
               <form id="scoreForm">
@@ -134,15 +143,15 @@
                   ${TEAMS.map((t) => `<option value="${t.name}">${t.name}</option>`).join('')}
                 </select>
                 <div style="margin-top:10px;">
+                  <input type="text" id="noteInput" placeholder="Note (optional)" style="width:70%;">
+                </div>
+                <div style="margin-top:10px;">
                   ${[1,5,10].map((n) => {
                     return `<button type="button" class="score-btn" data-delta="${n}">+${n}</button>`;
                   }).join('')}
                   ${[1,5,10].map((n) => {
                     return `<button type="button" class="score-btn" data-delta="-${n}" style="margin-left:5px;">-${n}</button>`;
                   }).join('')}
-                </div>
-                <div style="margin-top:10px;">
-                  <input type="text" id="noteInput" placeholder="Note (optional)" style="width:70%;">
                 </div>
               </form>
             </div>`;
@@ -245,6 +254,9 @@
         renderApp();
       });
     }
+
+    // Update live bar chart after rendering
+    updateChart(state);
   }
 
   /**
@@ -309,4 +321,66 @@
   document.addEventListener('DOMContentLoaded', function () {
     renderApp();
   });
+
+  /**
+   * Update or create the live bar chart representing team scores. Uses Chart.js.
+   * If an existing chart is present, it will update the data; otherwise it
+   * creates a new bar chart. Each bar corresponds to a team and is coloured
+   * according to the team's colour. The y-axis begins at zero.
+   * @param {Object} state
+   */
+  function updateChart(state) {
+    // Ensure the canvas exists in the DOM
+    const canvas = document.getElementById('scoreChartCanvas');
+    if (!canvas || typeof Chart === 'undefined') {
+      return;
+    }
+    const ctx = canvas.getContext('2d');
+    const labels = TEAMS.map((t) => t.name);
+    const data = labels.map((name) => state.scores[name]);
+    const colours = TEAMS.map((t) => t.color);
+    // Chart.js expects values not all equal; when all values are zero, we still want a chart.
+    if (scoreChart) {
+      scoreChart.data.labels = labels;
+      scoreChart.data.datasets[0].data = data;
+      scoreChart.data.datasets[0].backgroundColor = colours;
+      scoreChart.update();
+    } else {
+      scoreChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              label: 'Score',
+              data: data,
+              backgroundColor: colours,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: {
+              display: false,
+            },
+            tooltip: {
+              callbacks: {
+                // Format tooltip to display team name and score with sign if needed
+                label: function (context) {
+                  const value = context.parsed.y;
+                  return `${context.label}: ${value}`;
+                },
+              },
+            },
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+            },
+          },
+        },
+      });
+    }
+  }
 })();
